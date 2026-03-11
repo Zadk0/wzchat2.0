@@ -1,5 +1,5 @@
 {
   "name": "WZChat",
   "description": "A minimalist, neon-styled chat application with real-time messaging and AI integration.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["camera"]
 }

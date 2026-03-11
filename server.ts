@@ -25,7 +25,8 @@ async function startServer() {
   });
   const PORT = process.env.PORT || 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   // --- Mock Email Service (Ethereal) ---
   // In a real app, you'd use a real SMTP server.
@@ -92,9 +93,9 @@ async function startServer() {
         return res.status(400).json({ error: 'Credenciales inválidas' });
       }
 
-      const token = jwt.sign({ id: user.id, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ id: user.id, name: user.name, email: user.email, avatar: user.avatar }, JWT_SECRET, { expiresIn: '7d' });
       
-      res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+      res.json({ token, user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar } });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Error interno del servidor' });
@@ -110,10 +111,35 @@ async function startServer() {
       const token = authHeader.split(' ')[1];
       jwt.verify(token, JWT_SECRET);
 
-      const users = db.prepare('SELECT id, name, email, is_online FROM users').all();
+      const users = db.prepare('SELECT id, name, email, avatar, is_online FROM users').all();
       res.json(users);
     } catch (error) {
       res.status(401).json({ error: 'No autorizado' });
+    }
+  });
+
+  // Update Profile
+  app.put('/api/users/profile', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+      
+      const token = authHeader.split(' ')[1];
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.id;
+
+      const { name, avatar } = req.body;
+      if (!name) return res.status(400).json({ error: 'El nombre es obligatorio' });
+
+      db.prepare('UPDATE users SET name = ?, avatar = ? WHERE id = ?').run(name, avatar || null, userId);
+      
+      const updatedUser = db.prepare('SELECT id, name, email, avatar FROM users WHERE id = ?').get(userId) as any;
+      const newToken = jwt.sign({ id: updatedUser.id, name: updatedUser.name, email: updatedUser.email, avatar: updatedUser.avatar }, JWT_SECRET, { expiresIn: '7d' });
+
+      res.json({ token: newToken, user: updatedUser });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Error al actualizar el perfil' });
     }
   });
 

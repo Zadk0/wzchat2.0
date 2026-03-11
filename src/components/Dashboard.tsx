@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth, User } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut, Bot, User as UserIcon, Send, Sparkles, MessageSquare } from 'lucide-react';
+import { LogOut, Bot, User as UserIcon, Send, Sparkles, MessageSquare, Settings } from 'lucide-react';
+import ProfileModal from './ProfileModal';
 
 interface Message {
   id: string;
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -156,15 +158,22 @@ export default function Dashboard() {
       <div className="w-80 border-r border-white/10 bg-zinc-950 flex flex-col">
         <div className="p-6 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
-              <UserIcon size={20} />
-            </div>
+            <button 
+              onClick={() => setIsProfileOpen(true)}
+              className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center border border-white/10 overflow-hidden hover:border-emerald-500/50 transition-colors"
+            >
+              {user?.avatar ? (
+                <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <UserIcon size={20} className="text-zinc-400" />
+              )}
+            </button>
             <div>
-              <h2 className="font-semibold text-white">{user?.name}</h2>
-              <p className="text-xs text-zinc-500">{user?.email}</p>
+              <h2 className="font-semibold text-white truncate max-w-[120px]">{user?.name}</h2>
+              <p className="text-xs text-zinc-500 truncate max-w-[120px]">{user?.email}</p>
             </div>
           </div>
-          <button onClick={logout} className="text-zinc-500 hover:text-red-400 transition-colors">
+          <button onClick={logout} className="text-zinc-500 hover:text-red-400 transition-colors" title="Cerrar sesión">
             <LogOut size={20} />
           </button>
         </div>
@@ -199,8 +208,12 @@ export default function Dashboard() {
               }`}
             >
               <div className="relative">
-                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
-                  {u.name.charAt(0).toUpperCase()}
+                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden">
+                  {u.avatar ? (
+                    <img src={u.avatar} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    u.name.charAt(0).toUpperCase()
+                  )}
                 </div>
                 {u.is_online === 1 && (
                   <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-zinc-950"></div>
@@ -226,8 +239,12 @@ export default function Dashboard() {
                     <Bot size={24} />
                   </div>
                 ) : (
-                  <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-xl font-medium">
-                    {activeChat.name.charAt(0).toUpperCase()}
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-xl font-medium overflow-hidden">
+                    {activeChat.avatar ? (
+                      <img src={activeChat.avatar} alt={activeChat.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      activeChat.name.charAt(0).toUpperCase()
+                    )}
                   </div>
                 )}
                 <div>
@@ -305,6 +322,8 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      {/* Profile Modal */}
+      <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
     </div>
   );
 }

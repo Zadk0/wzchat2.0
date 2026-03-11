@@ -4,6 +4,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  avatar?: string;
   is_online?: number;
 }
 
@@ -12,6 +13,7 @@ interface AuthContextType {
   token: string | null;
   login: (token: string, user: User) => void;
   logout: () => void;
+  updateUser: (token: string, user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,6 +38,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('wzchat_user', JSON.stringify(newUser));
   };
 
+  const updateUser = (newToken: string, updatedUser: User) => {
+    setToken(newToken);
+    setUser(updatedUser);
+    localStorage.setItem('wzchat_token', newToken);
+    localStorage.setItem('wzchat_user', JSON.stringify(updatedUser));
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -44,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

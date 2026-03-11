@@ -12,6 +12,7 @@ db.exec(`
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
+    avatar TEXT,
     is_online INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -26,5 +27,12 @@ db.exec(`
     FOREIGN KEY (receiver_id) REFERENCES users (id)
   );
 `);
+
+// Migration for existing databases
+try {
+  db.exec('ALTER TABLE users ADD COLUMN avatar TEXT;');
+} catch (e) {
+  // Column already exists or other error, ignore
+}
 
 export default db;
