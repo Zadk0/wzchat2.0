@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth, User } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut, Bot, User as UserIcon, Send, Sparkles, MessageSquare, Settings } from 'lucide-react';
+import { LogOut, Bot, User as UserIcon, Send, Sparkles, MessageSquare, Settings, Paperclip, X, File as FileIcon } from 'lucide-react';
 import ProfileModal from './ProfileModal';
 
 interface Message {
@@ -10,6 +10,9 @@ interface Message {
   sender_id: string;
   receiver_id: string;
   content: string;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_type?: string | null;
   created_at: string;
 }
 
@@ -22,7 +25,9 @@ export default function Dashboard() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<{ url: string, name: string, type: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -92,12 +97,35 @@ export default function Dashboard() {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert("El archivo es demasiado grande. El límite es 10MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedFile({
+          url: reader.result as string,
+          name: file.name,
+          type: file.type
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !activeChat) return;
+    if ((!input.trim() && !selectedFile) || !activeChat) return;
 
     const content = input;
+    const fileData = selectedFile;
+    
     setInput('');
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
 
     if (activeChat === 'ai') {
       const aiMsg: Message = {
@@ -105,6 +133,9 @@ export default function Dashboard() {
         sender_id: user!.id,
         receiver_id: 'ai',
         content,
+        file_url: fileData?.url,
+        file_name: fileData?.name,
+        file_type: fileData?.type,
         created_at: new Date().toISOString()
       };
       setMessages(prev => [...prev, aiMsg]);
@@ -117,7 +148,7 @@ export default function Dashboard() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`
           },
-          body: JSON.stringify({ message: content })
+          body: JSON.stringify({ message: content, file: fileData })
         });
         
         if (!res.ok) throw new Error('Error en la respuesta de la IA');
@@ -147,7 +178,10 @@ export default function Dashboard() {
     } else {
       socket?.emit('send_message', {
         receiverId: activeChat.id,
-        content
+        content,
+        fileUrl: fileData?.url,
+        fileName: fileData?.name,
+        fileType: fileData?.type
       });
     }
   };
@@ -273,7 +307,19 @@ export default function Dashboard() {
                         ? 'bg-emerald-500 text-black rounded-tr-sm' 
                         : 'bg-zinc-900 border border-white/10 text-zinc-100 rounded-tl-sm'
                     }`}>
-                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                      {msg.file_url && (
+                        <div className="mb-2">
+                          {msg.file_type?.startsWith('image/') ? (
+                            <img src={msg.file_url} alt={msg.file_name || 'Imagen adjunta'} className="max-w-full rounded-lg max-h-64 object-contain" />
+                          ) : (
+                            <a href={msg.file_url} download={msg.file_name} className={`flex items-center gap-2 p-3 rounded-lg ${isMe ? 'bg-emerald-600/30 hover:bg-emerald-600/50' : 'bg-zinc-800 hover:bg-zinc-700'} transition-colors`}>
+                              <FileIcon size={20} />
+                              <span className="text-sm truncate max-w-[200px]">{msg.file_name}</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {msg.content && <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>}
                       <span className={`text-[10px] mt-2 block ${isMe ? 'text-emerald-900/60' : 'text-zinc-500'}`}>
                         {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -294,7 +340,44 @@ export default function Dashboard() {
             </div>
 
             <div className="p-6 bg-zinc-950/50 backdrop-blur-md border-t border-white/10">
+              {selectedFile && (
+                <div className="mb-4 flex items-center gap-3 bg-zinc-900 border border-white/10 p-3 rounded-xl max-w-sm">
+                  {selectedFile.type.startsWith('image/') ? (
+                    <img src={selectedFile.url} alt="Preview" className="w-12 h-12 rounded object-cover" />
+                  ) : (
+                    <div className="w-12 h-12 rounded bg-zinc-800 flex items-center justify-center">
+                      <FileIcon size={24} className="text-emerald-500" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">{selectedFile.name}</p>
+                    <p className="text-xs text-zinc-500">Archivo adjunto</p>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setSelectedFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="text-zinc-400 hover:text-red-400"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              )}
               <form onSubmit={handleSend} className="flex items-center gap-4 max-w-4xl mx-auto">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileSelect} 
+                  className="hidden" 
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-14 h-14 rounded-full bg-zinc-900 border border-white/10 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition-all"
+                >
+                  <Paperclip size={20} />
+                </button>
                 <input
                   type="text"
                   value={input}
@@ -304,7 +387,7 @@ export default function Dashboard() {
                 />
                 <button
                   type="submit"
-                  disabled={!input.trim() || loading}
+                  disabled={(!input.trim() && !selectedFile) || loading}
                   className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center transition-all disabled:opacity-50 disabled:hover:bg-emerald-500"
                 >
                   <Send size={20} className="ml-1" />

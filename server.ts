@@ -21,7 +21,8 @@ async function startServer() {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
-    cors: { origin: '*' }
+    cors: { origin: '*' },
+    maxHttpBufferSize: 1e7 // 10MB
   });
   const PORT = process.env.PORT || 3000;
 
@@ -176,13 +177,31 @@ async function startServer() {
       const token = authHeader.split(' ')[1];
       jwt.verify(token, JWT_SECRET); // Verify token
 
-      const { message } = req.body;
-      if (!message) return res.status(400).json({ error: 'Mensaje requerido' });
+      const { message, file } = req.body;
+      if (!message && !file) return res.status(400).json({ error: 'Mensaje o archivo requerido' });
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      let contents: any = message || '';
+      
+      if (file && file.url && file.type.startsWith('image/')) {
+        const base64Data = file.url.split(',')[1];
+        contents = {
+          parts: [
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: file.type
+              }
+            },
+            { text: message || 'Describe esta imagen' }
+          ]
+        };
+      }
+
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: message
+        contents
       });
 
       res.json({ reply: response.text });
@@ -218,18 +237,21 @@ async function startServer() {
     socket.join(userId);
 
     socket.on('send_message', (data) => {
-      const { receiverId, content } = data;
+      const { receiverId, content, fileUrl, fileName, fileType } = data;
       const messageId = uuidv4();
       
-      db.prepare('INSERT INTO messages (id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?)').run(
-        messageId, userId, receiverId, content
+      db.prepare('INSERT INTO messages (id, sender_id, receiver_id, content, file_url, file_name, file_type) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        messageId, userId, receiverId, content || '', fileUrl || null, fileName || null, fileType || null
       );
 
       const message = {
         id: messageId,
         sender_id: userId,
         receiver_id: receiverId,
-        content,
+        content: content || '',
+        file_url: fileUrl || null,
+        file_name: fileName || null,
+        file_type: fileType || null,
         created_at: new Date().toISOString()
       };
 

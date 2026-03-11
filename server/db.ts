@@ -22,6 +22,9 @@ db.exec(`
     sender_id TEXT NOT NULL,
     receiver_id TEXT NOT NULL,
     content TEXT NOT NULL,
+    file_url TEXT,
+    file_name TEXT,
+    file_type TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (sender_id) REFERENCES users (id),
     FOREIGN KEY (receiver_id) REFERENCES users (id)
@@ -33,6 +36,14 @@ try {
   db.exec('ALTER TABLE users ADD COLUMN avatar TEXT;');
 } catch (e) {
   // Column already exists or other error, ignore
+}
+
+try {
+  db.exec('ALTER TABLE messages ADD COLUMN file_url TEXT;');
+  db.exec('ALTER TABLE messages ADD COLUMN file_name TEXT;');
+  db.exec('ALTER TABLE messages ADD COLUMN file_type TEXT;');
+} catch (e) {
+  // Columns already exist or other error, ignore
 }
 
 export default db;
