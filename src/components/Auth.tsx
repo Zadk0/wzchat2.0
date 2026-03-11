@@ -33,17 +33,13 @@ export default function Auth() {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email })
+          body: JSON.stringify({ name, email, password })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Error al registrarse');
         
-        setMessage(`¡Registro exitoso! \nContraseña temporal: ${data.demoPassword}`);
-        if (data.emailPreviewUrl) {
-          console.log('Vista previa del correo:', data.emailPreviewUrl);
-        }
+        setMessage(data.message || '¡Registro exitoso! Ahora puedes iniciar sesión.');
         setIsLogin(true);
-        setPassword('');
       }
     } catch (err: any) {
       setError(err.message);
@@ -97,19 +93,17 @@ export default function Auth() {
               />
             </div>
 
-            {isLogin && (
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1.5">Contraseña</label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
-                  placeholder="••••••"
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1.5">Contraseña</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+                placeholder="••••••"
+              />
+            </div>
 
             {error && <div className="text-red-400 text-sm bg-red-400/10 p-3 rounded-lg border border-red-400/20">{error}</div>}
             {message && <div className="text-emerald-400 text-sm bg-emerald-400/10 p-3 rounded-lg border border-emerald-400/20 whitespace-pre-line">{message}</div>}

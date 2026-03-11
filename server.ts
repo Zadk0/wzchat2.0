@@ -49,9 +49,9 @@ async function startServer() {
   // Register
   app.post('/api/auth/register', async (req, res) => {
     try {
-      const { name, email } = req.body;
-      if (!name || !email) {
-        return res.status(400).json({ error: 'El nombre y el correo son obligatorios' });
+      const { name, email, password } = req.body;
+      if (!name || !email || !password) {
+        return res.status(400).json({ error: 'El nombre, correo y contraseña son obligatorios' });
       }
 
       const existingUser = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
@@ -59,32 +59,15 @@ async function startServer() {
         return res.status(400).json({ error: 'El correo ya está registrado' });
       }
 
-      // Generate a random 6-character password
-      const generatedPassword = Math.random().toString(36).slice(-6).toUpperCase();
-      const hashedPassword = await bcrypt.hash(generatedPassword, 10);
+      const hashedPassword = await bcrypt.hash(password, 10);
       const userId = uuidv4();
 
       db.prepare('INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)').run(
         userId, name, email, hashedPassword
       );
 
-      // Send Email
-      let emailPreviewUrl = '';
-      if (transporter) {
-        const info = await transporter.sendMail({
-          from: '"WZChat Admin" <admin@wzchat.com>',
-          to: email,
-          subject: 'Tu Contraseña de WZChat',
-          text: `Hola ${name},\n\n¡Bienvenido a WZChat! Tu contraseña temporal es: ${generatedPassword}\n\nPor favor, úsala para iniciar sesión.`,
-          html: `<p>Hola <strong>${name}</strong>,</p><p>¡Bienvenido a WZChat! Tu contraseña temporal es: <strong>${generatedPassword}</strong></p><p>Por favor, úsala para iniciar sesión.</p>`
-        });
-        emailPreviewUrl = nodemailer.getTestMessageUrl(info) || '';
-      }
-
-      res.json({ 
-        message: 'Registro exitoso. Revisa tu correo para ver la contraseña.',
-        demoPassword: generatedPassword, // For demo purposes, we return it here
-        emailPreviewUrl
+      res.status(201).json({ 
+        message: 'Registro exitoso. Ahora puedes iniciar sesión.'
       });
     } catch (error) {
       console.error(error);
