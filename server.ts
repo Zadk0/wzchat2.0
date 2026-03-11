@@ -93,7 +93,7 @@ async function startServer() {
         return res.status(400).json({ error: 'Credenciales inválidas' });
       }
 
-      const token = jwt.sign({ id: user.id, name: user.name, email: user.email, avatar: user.avatar }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ id: user.id, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
       
       res.json({ token, user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar } });
     } catch (error) {
@@ -134,7 +134,7 @@ async function startServer() {
       db.prepare('UPDATE users SET name = ?, avatar = ? WHERE id = ?').run(name, avatar || null, userId);
       
       const updatedUser = db.prepare('SELECT id, name, email, avatar FROM users WHERE id = ?').get(userId) as any;
-      const newToken = jwt.sign({ id: updatedUser.id, name: updatedUser.name, email: updatedUser.email, avatar: updatedUser.avatar }, JWT_SECRET, { expiresIn: '7d' });
+      const newToken = jwt.sign({ id: updatedUser.id, name: updatedUser.name, email: updatedUser.email }, JWT_SECRET, { expiresIn: '7d' });
 
       res.json({ token: newToken, user: updatedUser });
     } catch (error) {
