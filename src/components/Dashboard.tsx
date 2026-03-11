@@ -3,7 +3,6 @@ import { useAuth, User } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { LogOut, Bot, User as UserIcon, Send, Sparkles, MessageSquare } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 
 interface Message {
   id: string;
@@ -110,22 +109,36 @@ export default function Dashboard() {
       setLoading(true);
 
       try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: content
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ message: content })
         });
+        
+        if (!res.ok) throw new Error('Error en la respuesta de la IA');
+        const data = await res.json();
         
         const replyMsg: Message = {
           id: (Date.now() + 1).toString(),
           sender_id: 'ai',
           receiver_id: user!.id,
-          content: response.text || 'Sin respuesta',
+          content: data.reply || 'Sin respuesta',
           created_at: new Date().toISOString()
         };
         setMessages(prev => [...prev, replyMsg]);
       } catch (err) {
         console.error(err);
+        const errorMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          sender_id: 'ai',
+          receiver_id: user!.id,
+          content: 'Hubo un error al conectar con la IA. Por favor, intenta de nuevo.',
+          created_at: new Date().toISOString()
+        };
+        setMessages(prev => [...prev, errorMsg]);
       } finally {
         setLoading(false);
       }

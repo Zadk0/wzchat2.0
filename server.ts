@@ -10,6 +10,8 @@ import nodemailer from 'nodemailer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { GoogleGenAI } from '@google/genai';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -136,6 +138,31 @@ async function startServer() {
       res.json(messages);
     } catch (error) {
       res.status(401).json({ error: 'No autorizado' });
+    }
+  });
+
+  // AI Chat Endpoint
+  app.post('/api/ai/chat', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+      
+      const token = authHeader.split(' ')[1];
+      jwt.verify(token, JWT_SECRET); // Verify token
+
+      const { message } = req.body;
+      if (!message) return res.status(400).json({ error: 'Mensaje requerido' });
+
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: message
+      });
+
+      res.json({ reply: response.text });
+    } catch (error) {
+      console.error('AI Error:', error);
+      res.status(500).json({ error: 'Error al procesar la respuesta de la IA' });
     }
   });
 
