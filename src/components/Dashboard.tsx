@@ -1,0 +1,297 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useAuth, User } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
+import { motion, AnimatePresence } from 'motion/react';
+import { LogOut, Bot, User as UserIcon, Send, Sparkles, MessageSquare } from 'lucide-react';
+import { GoogleGenAI } from '@google/genai';
+
+interface Message {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string;
+}
+
+export default function Dashboard() {
+  const { user, token, logout } = useAuth();
+  const { socket, onlineUsers } = useSocket();
+  const [users, setUsers] = useState<User[]>([]);
+  const [activeChat, setActiveChat] = useState<User | 'ai' | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [token]);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on('receive_message', (msg: Message) => {
+        if (
+          (activeChat !== 'ai' && activeChat?.id === msg.sender_id) ||
+          (user?.id === msg.sender_id && activeChat !== 'ai' && activeChat?.id === msg.receiver_id)
+        ) {
+          setMessages(prev => [...prev, msg]);
+        }
+      });
+
+      socket.on('user_status_change', ({ userId, isOnline }) => {
+        setUsers(prev => {
+          const newUsers = prev.map(u => u.id === userId ? { ...u, is_online: isOnline } : u);
+          if (activeChat !== 'ai' && activeChat?.id === userId) {
+            setActiveChat(newUsers.find(u => u.id === userId) || null);
+          }
+          return newUsers;
+        });
+      });
+
+      return () => {
+        socket.off('receive_message');
+        socket.off('user_status_change');
+      };
+    }
+  }, [socket, activeChat, user]);
+
+  useEffect(() => {
+    if (activeChat && activeChat !== 'ai') {
+      fetchMessages(activeChat.id);
+    } else if (activeChat === 'ai') {
+      setMessages([]);
+    }
+  }, [activeChat]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('/api/users', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setUsers(data.filter((u: User) => u.id !== user?.id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchMessages = async (otherUserId: string) => {
+    try {
+      const res = await fetch(`/api/messages/${otherUserId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setMessages(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || !activeChat) return;
+
+    const content = input;
+    setInput('');
+
+    if (activeChat === 'ai') {
+      const aiMsg: Message = {
+        id: Date.now().toString(),
+        sender_id: user!.id,
+        receiver_id: 'ai',
+        content,
+        created_at: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, aiMsg]);
+      setLoading(true);
+
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const response = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: content
+        });
+        
+        const replyMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          sender_id: 'ai',
+          receiver_id: user!.id,
+          content: response.text || 'Sin respuesta',
+          created_at: new Date().toISOString()
+        };
+        setMessages(prev => [...prev, replyMsg]);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      socket?.emit('send_message', {
+        receiverId: activeChat.id,
+        content
+      });
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-black text-zinc-100 font-sans overflow-hidden">
+      {/* Sidebar */}
+      <div className="w-80 border-r border-white/10 bg-zinc-950 flex flex-col">
+        <div className="p-6 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+              <UserIcon size={20} />
+            </div>
+            <div>
+              <h2 className="font-semibold text-white">{user?.name}</h2>
+              <p className="text-xs text-zinc-500">{user?.email}</p>
+            </div>
+          </div>
+          <button onClick={logout} className="text-zinc-500 hover:text-red-400 transition-colors">
+            <LogOut size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <button
+            onClick={() => setActiveChat('ai')}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
+              activeChat === 'ai' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'hover:bg-white/5 text-zinc-400'
+            }`}
+          >
+            <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+              <Bot size={20} />
+            </div>
+            <div className="flex-1 text-left">
+              <h3 className="font-medium">WZ AI</h3>
+              <p className="text-xs opacity-70">Asistente Gemini</p>
+            </div>
+            <Sparkles size={16} className="opacity-50" />
+          </button>
+
+          <div className="pt-4 pb-2 px-2 text-xs font-semibold text-zinc-600 uppercase tracking-wider">
+            Mensajes Directos
+          </div>
+
+          {users.map(u => (
+            <button
+              key={u.id}
+              onClick={() => setActiveChat(u)}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
+                activeChat !== 'ai' && activeChat?.id === u.id ? 'bg-white/10 text-white' : 'hover:bg-white/5 text-zinc-400'
+              }`}
+            >
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
+                  {u.name.charAt(0).toUpperCase()}
+                </div>
+                {u.is_online === 1 && (
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-zinc-950"></div>
+                )}
+              </div>
+              <div className="flex-1 text-left">
+                <h3 className="font-medium">{u.name}</h3>
+                <p className="text-xs opacity-70 truncate">{u.email}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chat Area */}
+      <div className="flex-1 flex flex-col bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-zinc-900/20 via-black to-black">
+        {activeChat ? (
+          <>
+            <div className="h-20 border-b border-white/10 flex items-center px-8 bg-zinc-950/50 backdrop-blur-md">
+              <div className="flex items-center gap-4">
+                {activeChat === 'ai' ? (
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                    <Bot size={24} />
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-xl font-medium">
+                    {activeChat.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-lg font-semibold text-white">
+                    {activeChat === 'ai' ? 'WZ AI' : activeChat.name}
+                  </h2>
+                  <p className="text-sm text-zinc-500">
+                    {activeChat === 'ai' ? 'Impulsado por Gemini 3.1 Pro' : (activeChat.is_online === 1 ? 'En línea' : 'Desconectado')}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-8 space-y-6">
+              {messages.map((msg, i) => {
+                const isMe = msg.sender_id === user?.id;
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={msg.id || i}
+                    className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[70%] rounded-2xl px-5 py-3 ${
+                      isMe 
+                        ? 'bg-emerald-500 text-black rounded-tr-sm' 
+                        : 'bg-zinc-900 border border-white/10 text-zinc-100 rounded-tl-sm'
+                    }`}>
+                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                      <span className={`text-[10px] mt-2 block ${isMe ? 'text-emerald-900/60' : 'text-zinc-500'}`}>
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="bg-zinc-900 border border-white/10 rounded-2xl rounded-tl-sm px-5 py-4 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="p-6 bg-zinc-950/50 backdrop-blur-md border-t border-white/10">
+              <form onSubmit={handleSend} className="flex items-center gap-4 max-w-4xl mx-auto">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  placeholder="Escribe un mensaje..."
+                  className="flex-1 bg-zinc-900 border border-white/10 rounded-full px-6 py-4 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
+                />
+                <button
+                  type="submit"
+                  disabled={!input.trim() || loading}
+                  className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center transition-all disabled:opacity-50 disabled:hover:bg-emerald-500"
+                >
+                  <Send size={20} className="ml-1" />
+                </button>
+              </form>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-zinc-500">
+            <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center mb-6 border border-white/10">
+              <MessageSquare size={40} className="opacity-50" />
+            </div>
+            <h2 className="text-xl font-medium text-white mb-2">Bienvenido a WZChat</h2>
+            <p>Selecciona un usuario o IA para empezar a chatear</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
