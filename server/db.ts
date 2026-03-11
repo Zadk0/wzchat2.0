@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const dbPath = path.resolve(process.cwd(), 'chat.db');
+const dbPath = process.env.DB_PATH || path.resolve(process.cwd(), 'chat.db');
 const db = new Database(dbPath);
 
 // Initialize database tables
