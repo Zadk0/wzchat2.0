@@ -24,7 +24,37 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setAvatar(reader.result as string);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 400;
+          const MAX_HEIGHT = 400;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            setAvatar(canvas.toDataURL('image/jpeg', 0.8));
+          }
+        };
+        img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -54,13 +84,33 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
 
   const takePhoto = () => {
     if (videoRef.current) {
+      const video = videoRef.current;
       const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
+      const MAX_WIDTH = 400;
+      const MAX_HEIGHT = 400;
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+
+      if (width > height) {
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+        }
+      } else {
+        if (height > MAX_HEIGHT) {
+          width *= MAX_HEIGHT / height;
+          height = MAX_HEIGHT;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(videoRef.current, 0, 0);
-        setAvatar(canvas.toDataURL('image/jpeg'));
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(video, 0, 0, width, height);
+        setAvatar(canvas.toDataURL('image/jpeg', 0.8));
         stopCamera();
       }
     }
