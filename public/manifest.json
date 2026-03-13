@@ -1,0 +1,16 @@
+{
+  "short_name": "WZChat",
+  "name": "WZChat - Chat App",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#09090b",
+  "display": "standalone",
+  "theme_color": "#10b981",
+  "description": "Una aplicación de chat en tiempo real con IA"
+}
