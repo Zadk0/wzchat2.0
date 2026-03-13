@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth, User } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut, Bot, User as UserIcon, Send, Sparkles, MessageSquare, Settings, Paperclip, X, File as FileIcon } from 'lucide-react';
+import { LogOut, Bot, User as UserIcon, Send, Sparkles, MessageSquare, Settings, Paperclip, X, File as FileIcon, ArrowLeft } from 'lucide-react';
 import ProfileModal from './ProfileModal';
 
 interface Message {
@@ -189,7 +189,7 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen bg-black text-zinc-100 font-sans overflow-hidden">
       {/* Sidebar */}
-      <div className="w-80 border-r border-white/10 bg-zinc-950 flex flex-col">
+      <div className={`w-full md:w-80 border-r border-white/10 bg-zinc-950 flex-col shrink-0 ${activeChat ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-6 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button 
@@ -263,11 +263,17 @@ export default function Dashboard() {
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-zinc-900/20 via-black to-black">
+      <div className={`flex-1 flex-col bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-zinc-900/20 via-black to-black ${!activeChat ? 'hidden md:flex' : 'flex'}`}>
         {activeChat ? (
           <>
-            <div className="h-20 border-b border-white/10 flex items-center px-8 bg-zinc-950/50 backdrop-blur-md">
-              <div className="flex items-center gap-4">
+            <div className="h-20 border-b border-white/10 flex items-center px-4 md:px-8 bg-zinc-950/50 backdrop-blur-md">
+              <div className="flex items-center gap-3 md:gap-4">
+                <button 
+                  onClick={() => setActiveChat(null)}
+                  className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-white transition-colors"
+                >
+                  <ArrowLeft size={24} />
+                </button>
                 {activeChat === 'ai' ? (
                   <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
                     <Bot size={24} />
@@ -292,7 +298,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-8 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
               {messages.map((msg, i) => {
                 const isMe = msg.sender_id === user?.id;
                 return (
@@ -302,7 +308,7 @@ export default function Dashboard() {
                     key={msg.id || i}
                     className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`max-w-[70%] rounded-2xl px-5 py-3 ${
+                    <div className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-3 md:px-5 ${
                       isMe 
                         ? 'bg-emerald-500 text-black rounded-tr-sm' 
                         : 'bg-zinc-900 border border-white/10 text-zinc-100 rounded-tl-sm'
@@ -339,7 +345,7 @@ export default function Dashboard() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="p-6 bg-zinc-950/50 backdrop-blur-md border-t border-white/10">
+            <div className="p-4 md:p-6 bg-zinc-950/50 backdrop-blur-md border-t border-white/10">
               {selectedFile && (
                 <div className="mb-4 flex items-center gap-3 bg-zinc-900 border border-white/10 p-3 rounded-xl max-w-sm">
                   {selectedFile.type.startsWith('image/') ? (
@@ -364,7 +370,7 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
-              <form onSubmit={handleSend} className="flex items-center gap-4 max-w-4xl mx-auto">
+              <form onSubmit={handleSend} className="flex items-center gap-2 md:gap-4 max-w-4xl mx-auto">
                 <input 
                   type="file" 
                   ref={fileInputRef} 
@@ -374,7 +380,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-14 h-14 rounded-full bg-zinc-900 border border-white/10 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition-all"
+                  className="w-12 h-12 md:w-14 md:h-14 shrink-0 rounded-full bg-zinc-900 border border-white/10 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition-all"
                 >
                   <Paperclip size={20} />
                 </button>
@@ -383,12 +389,12 @@ export default function Dashboard() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   placeholder="Escribe un mensaje..."
-                  className="flex-1 bg-zinc-900 border border-white/10 rounded-full px-6 py-4 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
+                  className="flex-1 bg-zinc-900 border border-white/10 rounded-full px-4 md:px-6 py-3 md:py-4 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all min-w-0"
                 />
                 <button
                   type="submit"
                   disabled={(!input.trim() && !selectedFile) || loading}
-                  className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center transition-all disabled:opacity-50 disabled:hover:bg-emerald-500"
+                  className="w-12 h-12 md:w-14 md:h-14 shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center transition-all disabled:opacity-50 disabled:hover:bg-emerald-500"
                 >
                   <Send size={20} className="ml-1" />
                 </button>
