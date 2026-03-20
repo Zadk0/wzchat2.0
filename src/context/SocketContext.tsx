@@ -10,7 +10,7 @@ interface SocketContextType {
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
 
@@ -29,6 +29,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     setSocket(newSocket);
 
+    newSocket.on('connect_error', (err) => {
+      if (err.message === 'Error de autenticación' || err.message === 'No autorizado') {
+        logout();
+      }
+    });
+
     newSocket.on('user_status_change', ({ userId, isOnline }) => {
       setOnlineUsers(prev => {
         const next = new Set(prev);
@@ -44,7 +50,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     return () => {
       newSocket.disconnect();
     };
-  }, [token]);
+  }, [token, logout]);
 
   return (
     <SocketContext.Provider value={{ socket, onlineUsers }}>

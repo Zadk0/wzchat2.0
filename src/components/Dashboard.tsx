@@ -30,7 +30,9 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchUsers();
+    if (token) {
+      fetchUsers();
+    }
   }, [token]);
 
   useEffect(() => {
@@ -74,11 +76,19 @@ export default function Dashboard() {
   }, [messages]);
 
   const fetchUsers = async () => {
+    if (!token) return;
     try {
       const res = await fetch('/api/users', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          logout();
+          return;
+        }
+        throw new Error(data.error || 'Failed to fetch users');
+      }
       setUsers(data.filter((u: User) => u.id !== user?.id));
     } catch (err) {
       console.error(err);
@@ -86,11 +96,19 @@ export default function Dashboard() {
   };
 
   const fetchMessages = async (otherUserId: string) => {
+    if (!token) return;
     try {
       const res = await fetch(`/api/messages/${otherUserId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          logout();
+          return;
+        }
+        throw new Error(data.error || 'Failed to fetch messages');
+      }
       setMessages(data);
     } catch (err) {
       console.error(err);
@@ -118,7 +136,7 @@ export default function Dashboard() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && !selectedFile) || !activeChat) return;
+    if ((!input.trim() && !selectedFile) || !activeChat || !token) return;
 
     const content = input;
     const fileData = selectedFile;
@@ -151,7 +169,13 @@ export default function Dashboard() {
           body: JSON.stringify({ message: content, file: fileData })
         });
         
-        if (!res.ok) throw new Error('Error en la respuesta de la IA');
+        if (!res.ok) {
+          if (res.status === 401) {
+            logout();
+            return;
+          }
+          throw new Error('Error en la respuesta de la IA');
+        }
         const data = await res.json();
         
         const replyMsg: Message = {

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'motion/react';
-import { MessageSquare, ArrowRight, UserPlus, LogIn } from 'lucide-react';
+import { MessageSquare, ArrowRight, UserPlus, LogIn, Fingerprint } from 'lucide-react';
+import { startAuthentication } from '@simplewebauthn/browser';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -43,6 +44,41 @@ export default function Auth() {
       }
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    if (!email) {
+      setError('Ingresa tu correo primero para usar biometría');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      const resOptions = await fetch('/api/auth/generate-authentication-options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const options = await resOptions.json();
+      if (!resOptions.ok) throw new Error(options.error || 'Error al obtener opciones');
+
+      const authResp = await startAuthentication(options);
+
+      const resVerify = await fetch('/api/auth/verify-authentication', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, response: authResp })
+      });
+      const verifyData = await resVerify.json();
+      if (!resVerify.ok) throw new Error(verifyData.error || 'Error al verificar biometría');
+
+      login(verifyData.token, verifyData.user);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Error en autenticación biométrica');
     } finally {
       setLoading(false);
     }
@@ -108,17 +144,30 @@ export default function Auth() {
             {error && <div className="text-red-400 text-sm bg-red-400/10 p-3 rounded-lg border border-red-400/20">{error}</div>}
             {message && <div className="text-emerald-400 text-sm bg-emerald-400/10 p-3 rounded-lg border border-emerald-400/20 whitespace-pre-line">{message}</div>}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {loading ? 'Procesando...' : isLogin ? (
-                <><LogIn size={20} /> Iniciar Sesión</>
-              ) : (
-                <><UserPlus size={20} /> Registrarse</>
+            <div className="flex flex-col gap-3">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {loading ? 'Procesando...' : isLogin ? (
+                  <><LogIn size={20} /> Iniciar Sesión</>
+                ) : (
+                  <><UserPlus size={20} /> Registrarse</>
+                )}
+              </button>
+
+              {isLogin && (
+                <button
+                  type="button"
+                  onClick={handleBiometricLogin}
+                  disabled={loading}
+                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 border border-white/10"
+                >
+                  <Fingerprint size={20} /> Iniciar con Huella / Rostro
+                </button>
               )}
-            </button>
+            </div>
           </form>
 
           <div className="mt-6 text-center">

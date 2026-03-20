@@ -9,6 +9,12 @@ import db from './server/db.js';
 import nodemailer from 'nodemailer';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
 
 import { GoogleGenAI } from '@google/genai';
 
@@ -24,7 +30,7 @@ async function startServer() {
     cors: { origin: '*' },
     maxHttpBufferSize: 1e7 // 10MB
   });
-  const PORT = process.env.PORT || 3000;
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -103,6 +109,198 @@ async function startServer() {
     }
   });
 
+  // --- WebAuthn (Passkeys) ---
+  const rpName = 'WZChat';
+
+  // 1. Generate Registration Options
+  app.get('/api/auth/generate-registration-options', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+      const token = authHeader.split(' ')[1];
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET) as any;
+      } catch (err) {
+        return res.status(401).json({ error: 'No autorizado' });
+      }
+      const userId = decoded.id;
+
+      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
+      if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+      // Get existing authenticators
+      const userAuthenticators = db.prepare('SELECT credential_id FROM authenticators WHERE user_id = ?').all(userId) as any[];
+
+      const expectedOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3000');
+      const rpID = new URL(expectedOrigin).hostname;
+
+      const options = await generateRegistrationOptions({
+        rpName,
+        rpID,
+        userID: new Uint8Array(Buffer.from(user.id)),
+        userName: user.email,
+        userDisplayName: user.name,
+        // Don't prompt users for their authenticator if they already registered it
+        excludeCredentials: userAuthenticators.map(auth => ({
+          id: auth.credential_id,
+          type: 'public-key',
+        })),
+        authenticatorSelection: {
+          residentKey: 'preferred',
+          userVerification: 'preferred',
+        },
+      });
+
+      // Save challenge to user
+      db.prepare('UPDATE users SET current_challenge = ? WHERE id = ?').run(options.challenge, userId);
+
+      res.json(options);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Error al generar opciones de registro' });
+    }
+  });
+
+  // 2. Verify Registration
+  app.post('/api/auth/verify-registration', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+      const token = authHeader.split(' ')[1];
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET) as any;
+      } catch (err) {
+        return res.status(401).json({ error: 'No autorizado' });
+      }
+      const userId = decoded.id;
+
+      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
+      if (!user || !user.current_challenge) return res.status(400).json({ error: 'No hay un desafío pendiente' });
+
+      const expectedOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3000');
+      const rpID = new URL(expectedOrigin).hostname;
+
+      const verification = await verifyRegistrationResponse({
+        response: req.body,
+        expectedChallenge: user.current_challenge,
+        expectedOrigin: [expectedOrigin, expectedOrigin.replace(/\/$/, '')], // Handle trailing slash
+        expectedRPID: rpID,
+      });
+
+      if (verification.verified && verification.registrationInfo) {
+        const { credential } = verification.registrationInfo;
+        
+        // Save authenticator
+        db.prepare('INSERT INTO authenticators (credential_id, user_id, credential_public_key, counter, transports) VALUES (?, ?, ?, ?, ?)').run(
+          credential.id,
+          userId,
+          Buffer.from(credential.publicKey).toString('base64url'),
+          credential.counter,
+          JSON.stringify(req.body.response.transports || [])
+        );
+
+        // Clear challenge
+        db.prepare('UPDATE users SET current_challenge = NULL WHERE id = ?').run(userId);
+
+        res.json({ verified: true });
+      } else {
+        res.status(400).json({ error: 'Verificación fallida' });
+      }
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: error.message || 'Error al verificar registro' });
+    }
+  });
+
+  // 3. Generate Authentication Options
+  app.post('/api/auth/generate-authentication-options', async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ error: 'El correo es obligatorio' });
+
+      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+      if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+      const userAuthenticators = db.prepare('SELECT credential_id, transports FROM authenticators WHERE user_id = ?').all(user.id) as any[];
+      if (userAuthenticators.length === 0) {
+        return res.status(400).json({ error: 'No hay datos biométricos registrados para este usuario' });
+      }
+
+      const expectedOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3000');
+      const rpID = new URL(expectedOrigin).hostname;
+
+      const options = await generateAuthenticationOptions({
+        rpID,
+        allowCredentials: userAuthenticators.map(auth => ({
+          id: auth.credential_id,
+          type: 'public-key',
+          transports: JSON.parse(auth.transports || '[]'),
+        })),
+        userVerification: 'preferred',
+      });
+
+      // Save challenge to user
+      db.prepare('UPDATE users SET current_challenge = ? WHERE id = ?').run(options.challenge, user.id);
+
+      res.json(options);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Error al generar opciones de autenticación' });
+    }
+  });
+
+  // 4. Verify Authentication
+  app.post('/api/auth/verify-authentication', async (req, res) => {
+    try {
+      const { email, response } = req.body;
+      if (!email || !response) return res.status(400).json({ error: 'Datos incompletos' });
+
+      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+      if (!user || !user.current_challenge) return res.status(400).json({ error: 'No hay un desafío pendiente' });
+
+      const authenticator = db.prepare('SELECT * FROM authenticators WHERE credential_id = ? AND user_id = ?').get(response.id, user.id) as any;
+      if (!authenticator) return res.status(400).json({ error: 'Autenticador no encontrado' });
+
+      const expectedOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3000');
+      const rpID = new URL(expectedOrigin).hostname;
+
+      const verification = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge: user.current_challenge,
+        expectedOrigin: [expectedOrigin, expectedOrigin.replace(/\/$/, '')],
+        expectedRPID: rpID,
+        credential: {
+          id: authenticator.credential_id,
+          publicKey: new Uint8Array(Buffer.from(authenticator.credential_public_key, 'base64url')),
+          counter: authenticator.counter,
+        },
+      });
+
+      if (verification.verified && verification.authenticationInfo) {
+        // Update counter
+        db.prepare('UPDATE authenticators SET counter = ? WHERE credential_id = ?').run(
+          verification.authenticationInfo.newCounter,
+          authenticator.credential_id
+        );
+
+        // Clear challenge
+        db.prepare('UPDATE users SET current_challenge = NULL WHERE id = ?').run(user.id);
+
+        // Generate JWT
+        const token = jwt.sign({ id: user.id, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+        
+        res.json({ token, user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar } });
+      } else {
+        res.status(400).json({ error: 'Verificación fallida' });
+      }
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: error.message || 'Error al verificar autenticación' });
+    }
+  });
+
   // Get Users
   app.get('/api/users', (req, res) => {
     try {
@@ -126,7 +324,12 @@ async function startServer() {
       if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
       
       const token = authHeader.split(' ')[1];
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET) as any;
+      } catch (err) {
+        return res.status(401).json({ error: 'No autorizado' });
+      }
       const userId = decoded.id;
 
       const { name, avatar } = req.body;
@@ -175,7 +378,11 @@ async function startServer() {
       if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
       
       const token = authHeader.split(' ')[1];
-      jwt.verify(token, JWT_SECRET); // Verify token
+      try {
+        jwt.verify(token, JWT_SECRET); // Verify token
+      } catch (err) {
+        return res.status(401).json({ error: 'No autorizado' });
+      }
 
       const { message, file } = req.body;
       if (!message && !file) return res.status(400).json({ error: 'Mensaje o archivo requerido' });

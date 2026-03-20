@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { X, Camera, Upload, Save } from 'lucide-react';
+import { X, Camera, Upload, Save, Fingerprint } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { startRegistration } from '@simplewebauthn/browser';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -9,7 +10,7 @@ interface ProfileModalProps {
 }
 
 export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
-  const { user, token, updateUser } = useAuth();
+  const { user, token, updateUser, logout } = useAuth();
   const [name, setName] = useState(user?.name || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [loading, setLoading] = useState(false);
@@ -117,6 +118,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
   };
 
   const handleSave = async () => {
+    if (!token) return;
     setLoading(true);
     try {
       const res = await fetch('/api/users/profile', {
@@ -128,13 +130,63 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         body: JSON.stringify({ name, avatar })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        if (res.status === 401) {
+          logout();
+          return;
+        }
+        throw new Error(data.error);
+      }
       
       updateUser(data.token, data.user);
       onClose();
     } catch (err) {
       console.error(err);
       alert("Error al guardar el perfil");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegisterBiometric = async () => {
+    if (!token) return;
+    try {
+      setLoading(true);
+      const resOptions = await fetch('/api/auth/generate-registration-options', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const options = await resOptions.json();
+      if (!resOptions.ok) {
+        if (resOptions.status === 401) {
+          logout();
+          return;
+        }
+        throw new Error(options.error || 'Error al obtener opciones');
+      }
+
+      const regResp = await startRegistration(options);
+
+      const resVerify = await fetch('/api/auth/verify-registration', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify(regResp)
+      });
+      const verifyData = await resVerify.json();
+      if (!resVerify.ok) {
+        if (resVerify.status === 401) {
+          logout();
+          return;
+        }
+        throw new Error(verifyData.error || 'Error al verificar registro');
+      }
+
+      alert('¡Biometría registrada con éxito! Ya puedes iniciar sesión con tu huella o rostro.');
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'Error al registrar biometría');
     } finally {
       setLoading(false);
     }
@@ -199,6 +251,17 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
             onChange={(e) => setName(e.target.value)}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
           />
+        </div>
+
+        <div className="mb-8">
+          <label className="block text-sm font-medium text-zinc-400 mb-2">Seguridad</label>
+          <button
+            onClick={handleRegisterBiometric}
+            disabled={loading}
+            className="w-full bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 border border-white/10"
+          >
+            <Fingerprint size={20} className="text-emerald-400" /> Activar inicio con Huella / Rostro
+          </button>
         </div>
 
         <button

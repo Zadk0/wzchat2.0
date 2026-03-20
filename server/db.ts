@@ -14,6 +14,7 @@ db.exec(`
     password TEXT NOT NULL,
     avatar TEXT,
     is_online INTEGER DEFAULT 0,
+    current_challenge TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -29,6 +30,15 @@ db.exec(`
     FOREIGN KEY (sender_id) REFERENCES users (id),
     FOREIGN KEY (receiver_id) REFERENCES users (id)
   );
+
+  CREATE TABLE IF NOT EXISTS authenticators (
+    credential_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    credential_public_key TEXT NOT NULL,
+    counter INTEGER NOT NULL,
+    transports TEXT,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  );
 `);
 
 // Migration for existing databases
@@ -36,6 +46,27 @@ try {
   db.exec('ALTER TABLE users ADD COLUMN avatar TEXT;');
 } catch (e) {
   // Column already exists or other error, ignore
+}
+
+try {
+  db.exec('ALTER TABLE users ADD COLUMN current_challenge TEXT;');
+} catch (e) {
+  // Column already exists or other error, ignore
+}
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS authenticators (
+      credential_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      credential_public_key TEXT NOT NULL,
+      counter INTEGER NOT NULL,
+      transports TEXT,
+      FOREIGN KEY (user_id) REFERENCES users (id)
+    );
+  `);
+} catch (e) {
+  // Table already exists or other error, ignore
 }
 
 try {

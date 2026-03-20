@@ -31,26 +31,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const login = (newToken: string, newUser: User) => {
+  const login = React.useCallback((newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('wzchat_token', newToken);
     localStorage.setItem('wzchat_user', JSON.stringify(newUser));
-  };
+  }, []);
 
-  const updateUser = (newToken: string, updatedUser: User) => {
+  const updateUser = React.useCallback((newToken: string, updatedUser: User) => {
     setToken(newToken);
     setUser(updatedUser);
     localStorage.setItem('wzchat_token', newToken);
     localStorage.setItem('wzchat_user', JSON.stringify(updatedUser));
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = React.useCallback(() => {
     setToken(null);
     setUser(null);
     localStorage.removeItem('wzchat_token');
     localStorage.removeItem('wzchat_user');
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout, updateUser }}>
