@@ -76,8 +76,12 @@ async function startServer() {
         userId, name, email, hashedPassword
       );
 
+      const token = jwt.sign({ id: userId, name, email }, JWT_SECRET, { expiresIn: '7d' });
+
       res.status(201).json({ 
-        message: 'Registro exitoso. Ahora puedes iniciar sesión.'
+        message: 'Registro exitoso.',
+        token,
+        user: { id: userId, name, email, avatar: null }
       });
     } catch (error) {
       console.error(error);

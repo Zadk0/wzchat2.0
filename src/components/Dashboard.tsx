@@ -33,16 +33,33 @@ export default function Dashboard() {
     if (token) {
       fetchUsers();
     }
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   }, [token]);
 
   useEffect(() => {
     if (socket) {
       socket.on('receive_message', (msg: Message) => {
-        if (
-          (activeChat !== 'ai' && activeChat?.id === msg.sender_id) ||
-          (user?.id === msg.sender_id && activeChat !== 'ai' && activeChat?.id === msg.receiver_id)
-        ) {
+        const isCurrentChat = (activeChat !== 'ai' && activeChat?.id === msg.sender_id) ||
+                              (user?.id === msg.sender_id && activeChat !== 'ai' && activeChat?.id === msg.receiver_id);
+        
+        if (isCurrentChat) {
           setMessages(prev => [...prev, msg]);
+        }
+
+        // Show notification if message is from someone else and (not in current chat OR window not focused)
+        if (msg.sender_id !== user?.id) {
+          if (!isCurrentChat || !document.hasFocus()) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+              const senderName = users.find(u => u.id === msg.sender_id)?.name || 'Nuevo mensaje';
+              const notificationText = msg.content || (msg.file_name ? `Archivo: ${msg.file_name}` : 'Mensaje recibido');
+              new Notification(senderName, {
+                body: notificationText,
+                icon: '/vite.svg' // You can use a better icon if available
+              });
+            }
+          }
         }
       });
 
@@ -61,7 +78,7 @@ export default function Dashboard() {
         socket.off('user_status_change');
       };
     }
-  }, [socket, activeChat, user]);
+  }, [socket, activeChat, user, users]);
 
   useEffect(() => {
     if (activeChat && activeChat !== 'ai') {
@@ -186,6 +203,13 @@ export default function Dashboard() {
           created_at: new Date().toISOString()
         };
         setMessages(prev => [...prev, replyMsg]);
+
+        if (!document.hasFocus() && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification('WZChat AI', {
+            body: data.reply || 'Sin respuesta',
+            icon: '/vite.svg'
+          });
+        }
       } catch (err) {
         console.error(err);
         const errorMsg: Message = {

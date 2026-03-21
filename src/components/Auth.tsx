@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'motion/react';
 import { MessageSquare, ArrowRight, UserPlus, LogIn, Fingerprint } from 'lucide-react';
-import { startAuthentication } from '@simplewebauthn/browser';
+import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -39,8 +39,29 @@ export default function Auth() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Error al registrarse');
         
-        setMessage(data.message || '¡Registro exitoso! Ahora puedes iniciar sesión.');
-        setIsLogin(true);
+        // Try to register biometrics automatically
+        try {
+          const resOptions = await fetch('/api/auth/generate-registration-options', {
+            headers: { Authorization: `Bearer ${data.token}` }
+          });
+          const options = await resOptions.json();
+          if (resOptions.ok) {
+            const regResp = await startRegistration(options);
+            await fetch('/api/auth/verify-registration', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${data.token}` 
+              },
+              body: JSON.stringify(regResp)
+            });
+          }
+        } catch (bioErr) {
+          console.error("Biometric registration skipped or failed:", bioErr);
+        }
+
+        // Login after biometric attempt
+        login(data.token, data.user);
       }
     } catch (err: any) {
       setError(err.message);
