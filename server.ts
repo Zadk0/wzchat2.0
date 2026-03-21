@@ -17,11 +17,36 @@ import {
 } from '@simplewebauthn/server';
 
 import { GoogleGenAI } from '@google/genai';
+import webpush from 'web-push';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-neon-key-2026';
+
+// --- Web Push Setup ---
+let vapidKeys = {
+  publicKey: '',
+  privateKey: ''
+};
+
+try {
+  const existingKeys = db.prepare('SELECT * FROM settings WHERE key = ?').get('vapid_keys') as any;
+  if (existingKeys) {
+    vapidKeys = JSON.parse(existingKeys.value);
+  } else {
+    vapidKeys = webpush.generateVAPIDKeys();
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('vapid_keys', JSON.stringify(vapidKeys));
+  }
+} catch (e) {
+  console.error("Error setting up VAPID keys", e);
+}
+
+webpush.setVapidDetails(
+  'mailto:test@example.com',
+  vapidKeys.publicKey,
+  vapidKeys.privateKey
+);
 
 async function startServer() {
   const app = express();
@@ -321,6 +346,41 @@ async function startServer() {
     }
   });
 
+  // --- Push Notifications ---
+  app.get('/api/push/vapid-public-key', (req, res) => {
+    res.send(vapidKeys.publicKey);
+  });
+
+  app.post('/api/push/subscribe', (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+      const token = authHeader.split(' ')[1];
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.id;
+
+      const subscription = req.body;
+      const subId = uuidv4();
+
+      // Check if already exists
+      const existing = db.prepare('SELECT id FROM push_subscriptions WHERE endpoint = ?').get(subscription.endpoint);
+      if (!existing) {
+        db.prepare('INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth) VALUES (?, ?, ?, ?, ?)').run(
+          subId,
+          userId,
+          subscription.endpoint,
+          subscription.keys.p256dh,
+          subscription.keys.auth
+        );
+      }
+
+      res.status(201).json({ message: 'Suscrito a notificaciones push' });
+    } catch (error) {
+      console.error('Error subscribing to push:', error);
+      res.status(500).json({ error: 'Error interno' });
+    }
+  });
+
   // Update Profile
   app.put('/api/users/profile', async (req, res) => {
     try {
@@ -470,6 +530,37 @@ async function startServer() {
       io.to(receiverId).emit('receive_message', message);
       // Send back to sender for confirmation
       socket.emit('receive_message', message);
+
+      // Send push notification
+      const sender = db.prepare('SELECT name FROM users WHERE id = ?').get(userId) as any;
+      const subscriptions = db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(receiverId) as any[];
+      
+      const payload = JSON.stringify({
+        title: sender ? sender.name : 'Nuevo mensaje',
+        body: content || (fileName ? `Archivo: ${fileName}` : 'Mensaje recibido'),
+        icon: '/vite.svg',
+        data: {
+          url: `/?chat=${userId}`
+        }
+      });
+
+      subscriptions.forEach(sub => {
+        const pushSubscription = {
+          endpoint: sub.endpoint,
+          keys: {
+            p256dh: sub.p256dh,
+            auth: sub.auth
+          }
+        };
+        webpush.sendNotification(pushSubscription, payload).catch(err => {
+          if (err.statusCode === 404 || err.statusCode === 410) {
+            console.log('Subscription has expired or is no longer valid: ', err);
+            db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
+          } else {
+            console.error('Error sending push notification:', err);
+          }
+        });
+      });
     });
 
     socket.on('disconnect', () => {

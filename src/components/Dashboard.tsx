@@ -32,11 +32,57 @@ export default function Dashboard() {
   useEffect(() => {
     if (token) {
       fetchUsers();
+      subscribeToPush();
     }
     if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted' && token) {
+          subscribeToPush();
+        }
+      });
     }
   }, [token]);
+
+  const subscribeToPush = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      
+      if (!subscription) {
+        const response = await fetch('/api/push/vapid-public-key');
+        const vapidPublicKey = await response.text();
+        const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
+
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedVapidKey
+        });
+      }
+
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(subscription)
+      });
+    } catch (error) {
+      console.error('Error subscribing to push notifications:', error);
+    }
+  };
+
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
 
   useEffect(() => {
     if (socket) {
@@ -46,20 +92,6 @@ export default function Dashboard() {
         
         if (isCurrentChat) {
           setMessages(prev => [...prev, msg]);
-        }
-
-        // Show notification if message is from someone else and (not in current chat OR window not focused)
-        if (msg.sender_id !== user?.id) {
-          if (!isCurrentChat || !document.hasFocus()) {
-            if ('Notification' in window && Notification.permission === 'granted') {
-              const senderName = users.find(u => u.id === msg.sender_id)?.name || 'Nuevo mensaje';
-              const notificationText = msg.content || (msg.file_name ? `Archivo: ${msg.file_name}` : 'Mensaje recibido');
-              new Notification(senderName, {
-                body: notificationText,
-                icon: '/vite.svg' // You can use a better icon if available
-              });
-            }
-          }
         }
       });
 
