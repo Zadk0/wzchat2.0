@@ -176,6 +176,7 @@ async function startServer() {
           type: 'public-key',
         })),
         authenticatorSelection: {
+          authenticatorAttachment: 'platform',
           residentKey: 'preferred',
           userVerification: 'preferred',
         },

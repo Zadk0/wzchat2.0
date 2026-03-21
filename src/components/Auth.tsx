@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'motion/react';
-import { MessageSquare, ArrowRight, UserPlus, LogIn, Fingerprint } from 'lucide-react';
+import { MessageSquare, ArrowRight, UserPlus, LogIn, Fingerprint, ScanFace } from 'lucide-react';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
 export default function Auth() {
@@ -185,7 +185,7 @@ export default function Auth() {
                   disabled={loading}
                   className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 border border-white/10"
                 >
-                  <Fingerprint size={20} /> Iniciar con Huella / Rostro
+                  <Fingerprint size={20} /> <ScanFace size={20} /> Iniciar con Huella / Face ID
                 </button>
               )}
             </div>

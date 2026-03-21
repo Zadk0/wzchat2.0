@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { X, Camera, Upload, Save, Fingerprint } from 'lucide-react';
+import { X, Camera, Upload, Save, Fingerprint, ScanFace } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { startRegistration } from '@simplewebauthn/browser';
 
@@ -183,7 +183,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         throw new Error(verifyData.error || 'Error al verificar registro');
       }
 
-      alert('¡Biometría registrada con éxito! Ya puedes iniciar sesión con tu huella o rostro.');
+      alert('¡Biometría registrada con éxito! Ya puedes iniciar sesión con tu huella o Face ID.');
     } catch (err: any) {
       console.error(err);
       alert(err.message || 'Error al registrar biometría');
@@ -260,7 +260,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
             disabled={loading}
             className="w-full bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 border border-white/10"
           >
-            <Fingerprint size={20} className="text-emerald-400" /> Activar inicio con Huella / Rostro
+            <Fingerprint size={20} className="text-emerald-400" /> <ScanFace size={20} className="text-emerald-400" /> Activar inicio con Huella / Face ID
           </button>
         </div>
 
